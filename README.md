@@ -3,7 +3,7 @@ MERN STACK project
 
 To install in your system then follow these steps--
 
-step1. git clone https://github.com/chandan9648/Excel-analytics.git
+step1. git clone (https://github.com/Aditya-Ranjan08/Excel-analytics.git)
 
 step2. cd backend = npx nodemon server.js
 
