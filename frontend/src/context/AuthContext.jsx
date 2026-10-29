@@ -15,6 +15,7 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
 
   const logout = useCallback(() => {
+    sessionStorage.setItem("flashToast", JSON.stringify({ type: "success", message: "You are now signed out." }));
     clearStoredSession();
     setUser(null);
     window.location.replace("/");

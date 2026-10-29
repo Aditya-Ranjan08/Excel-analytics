@@ -1,6 +1,8 @@
-import { BrowserRouter, Routes, Route, Navigate, Link } from "react-router-dom";
-import { lazy, Suspense, useContext } from "react";
+import { BrowserRouter, Routes, Route, Navigate, Link, useLocation } from "react-router-dom";
+import { lazy, Suspense, useContext, useEffect } from "react";
 import {  AuthContext } from "./context/AuthContext";
+import { toast, ToastContainer } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
 import Home from "./pages/auth/Home";
 import Nav from "./components/Navbar";
 import Signup from "./pages/auth/Signup";
@@ -23,6 +25,26 @@ const ProtectedRoute = ({ children }) => {
   return user ? children : <Navigate to="/login" />;
 };
 
+const FlashToastBridge = () => {
+  const location = useLocation();
+
+  useEffect(() => {
+    const pending = sessionStorage.getItem("flashToast");
+    if (!pending) return;
+    sessionStorage.removeItem("flashToast");
+    try {
+      const { type, message } = JSON.parse(pending);
+      if (["success", "error", "info", "warning"].includes(type) && message) {
+        toast[type](message, { containerId: "app-global" });
+      }
+    } catch {
+      // Ignore an invalid one-time toast message.
+    }
+  }, [location.key]);
+
+  return null;
+};
+
 
 //  App
 function App() {
@@ -30,6 +52,8 @@ function App() {
 
   return (
     <BrowserRouter>
+      <ToastContainer containerId="app-global" position="top-right" autoClose={3200} newestOnTop closeOnClick pauseOnFocusLoss draggable theme="light" />
+      <FlashToastBridge />
       <Nav />
       <Suspense fallback={<div className="grid min-h-[50vh] place-items-center text-sm font-medium text-slate-500">Loading your workspace…</div>}>
       <Routes>

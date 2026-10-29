@@ -24,9 +24,10 @@ const Login = () => {
       setSubmitting(true);
       const res = await API.post("/auth/login", data);
       login(res.data.token);
-      localStorage.setItem("role", res.data.user.role);
-      toast.success("Welcome back!");
-      navigate(res.data.user.role === "admin" ? "/admin" : "/dashboard");
+      const role = res.data.user?.role || "user";
+      localStorage.setItem("role", role);
+      sessionStorage.setItem("flashToast", JSON.stringify({ type: "success", message: "Login successful. Welcome back!" }));
+      navigate(role === "admin" ? "/admin" : "/dashboard", { replace: true });
     } catch (err) {
       console.error("Login failed:", err.response?.data || err.message);
       toast.error(err.response?.data?.msg || err.response?.data?.message || "We couldn't sign you in. Check your details and try again.");
