@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { Activity, ArrowDownToLine, ArrowRight, BarChart3, Check, CircleAlert, Clock3, FileSpreadsheet, LoaderCircle, Menu, RefreshCw, Trash2, Upload } from "lucide-react";
 import API from "../../api";
 import Sidebar from "../../components/Sidebar";
+import DeleteConfirmDialog from "../../components/DeleteConfirmDialog";
 import { AuthContext } from "../../context/AuthContext";
 import { toast, ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
@@ -27,6 +28,8 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleting, setDeleting] = useState(false);
 
   const fetchUploadHistory = useCallback(async ({ quiet = false } = {}) => {
     if (quiet) setRefreshing(true);
@@ -53,15 +56,19 @@ const Dashboard = () => {
     return { total: history.length, successful, failed };
   }, [history]);
 
-  const handleDelete = async (item) => {
-    if (!window.confirm(`Delete “${item.filename}” from your upload history?`)) return;
+  const handleDelete = async () => {
+    if (!deleteTarget || deleting) return;
     try {
-      await API.delete(`/upload/${item._id}`);
-      setHistory((items) => items.filter((upload) => upload._id !== item._id));
+      setDeleting(true);
+      await API.delete(`/upload/${deleteTarget._id}`);
+      setHistory((items) => items.filter((upload) => upload._id !== deleteTarget._id));
       toast.success("Upload deleted.");
+      setDeleteTarget(null);
     } catch (err) {
       console.error("Failed to delete upload", err);
       toast.error("Couldn't delete this upload. Please try again.");
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -156,7 +163,7 @@ const Dashboard = () => {
                       </span>
                       <div className="flex items-center gap-1">
                         {item.status === "success" && <button type="button" onClick={() => handleDownload(item)} aria-label={`Download ${item.filename} data`} title="Download data" className="rounded-lg p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900"><ArrowDownToLine size={17} /></button>}
-                        <button type="button" onClick={() => handleDelete(item)} aria-label={`Delete ${item.filename}`} title="Delete upload" className="rounded-lg p-2 text-slate-400 transition hover:bg-red-50 hover:text-red-600"><Trash2 size={16} /></button>
+                        <button type="button" onClick={() => setDeleteTarget(item)} aria-label={`Delete ${item.filename}`} title="Delete upload" className="rounded-lg p-2 text-slate-400 transition hover:bg-red-50 hover:text-red-600"><Trash2 size={16} /></button>
                       </div>
                     </div>
                   </li>
@@ -188,6 +195,7 @@ const Dashboard = () => {
             </div>
           </aside>
         </section>
+        <DeleteConfirmDialog open={Boolean(deleteTarget)} filename={deleteTarget?.filename} busy={deleting} onCancel={() => setDeleteTarget(null)} onConfirm={handleDelete} />
       </main>
     </div>
   );

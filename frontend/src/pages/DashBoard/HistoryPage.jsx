@@ -6,6 +6,7 @@ import { toast, ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import API from "../../api";
 import Sidebar from "../../components/Sidebar";
+import DeleteConfirmDialog from "../../components/DeleteConfirmDialog";
 
 const formatDate = (value) => {
   if (!value) return "Date unavailable";
@@ -22,6 +23,8 @@ const HistoryPage = () => {
   const [loadError, setLoadError] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [preview, setPreview] = useState(null);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleting, setDeleting] = useState(false);
 
   const fetchHistory = useCallback(async ({ quiet = false } = {}) => {
     if (quiet) setRefreshing(true);
@@ -57,16 +60,20 @@ const HistoryPage = () => {
     });
   }, [uploads, searchTerm, statusFilter]);
 
-  const handleDelete = async (item) => {
-    if (!window.confirm(`Delete “${item.filename}” from your upload history?`)) return;
+  const handleDelete = async () => {
+    if (!deleteTarget || deleting) return;
     try {
-      await API.delete(`/upload/${item._id}`);
-      setUploads((current) => current.filter((upload) => upload._id !== item._id));
+      setDeleting(true);
+      await API.delete(`/upload/${deleteTarget._id}`);
+      setUploads((current) => current.filter((upload) => upload._id !== deleteTarget._id));
       toast.success("Upload removed from your history.");
-      if (preview?._id === item._id) setPreview(null);
+      if (preview?._id === deleteTarget._id) setPreview(null);
+      setDeleteTarget(null);
     } catch (error) {
       console.error("Delete failed:", error);
       toast.error(error.response?.data?.message || "Couldn't delete this upload. Try again.");
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -123,7 +130,7 @@ const HistoryPage = () => {
                           <button type="button" onClick={() => setPreview(item)} disabled={!ready || !item.parsedData?.length} title="Preview workbook data" aria-label={`Preview ${item.filename}`} className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-xs font-semibold text-slate-600 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40"><Eye size={16} /><span className="hidden lg:inline">Preview</span></button>
                           {ready && <Link to="/dashboard/charts" state={{ uploadId: item._id }} title="Open workbook visualization" aria-label={`Visualize ${item.filename}`} className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-50"><BarChart3 size={16} /><span className="hidden lg:inline">Charts</span></Link>}
                           {ready && <button type="button" onClick={() => handleDownload(item)} title="Download parsed data as JSON" aria-label={`Download ${item.filename} data`} className="rounded-lg p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900"><ArrowDownToLine size={16} /></button>}
-                          <button type="button" onClick={() => handleDelete(item)} title="Delete upload" aria-label={`Delete ${item.filename}`} className="rounded-lg p-2 text-slate-500 transition hover:bg-red-50 hover:text-red-600"><Trash2 size={16} /></button>
+                          <button type="button" onClick={() => setDeleteTarget(item)} title="Delete upload" aria-label={`Delete ${item.filename}`} className="rounded-lg p-2 text-slate-500 transition hover:bg-red-50 hover:text-red-600"><Trash2 size={16} /></button>
                         </div>
                       </div>
                     </article>;
@@ -137,6 +144,7 @@ const HistoryPage = () => {
             <div className="overflow-auto p-3 sm:p-5">{preview.parsedData?.length ? <table className="min-w-full border-collapse text-left text-xs sm:text-sm"><thead className="sticky top-0 bg-slate-50 text-slate-600"><tr>{Object.keys(preview.parsedData[0]).map((column) => <th key={column} className="whitespace-nowrap border-b border-slate-200 px-3 py-2.5 font-semibold">{column}</th>)}</tr></thead><tbody>{preview.parsedData.slice(0, 50).map((row, index) => <tr key={index} className="even:bg-slate-50/60">{Object.keys(preview.parsedData[0]).map((column) => <td key={column} className="max-w-64 whitespace-nowrap border-b border-slate-100 px-3 py-2 text-slate-700">{String(row[column] ?? "—")}</td>)}</tr>)}</tbody></table> : <p className="p-8 text-center text-sm text-slate-500">No preview data available.</p>}</div>
             <div className="border-t border-slate-100 px-4 py-3 text-right text-xs text-slate-500 sm:px-6">{Math.min(preview.parsedData?.length || 0, 50)} of {(preview.parsedData?.length || 0).toLocaleString()} rows</div></div>}
         </Modal>
+        <DeleteConfirmDialog open={Boolean(deleteTarget)} filename={deleteTarget?.filename} busy={deleting} onCancel={() => setDeleteTarget(null)} onConfirm={handleDelete} />
       </main>
     </div>
   );
