@@ -17,7 +17,7 @@ export const AuthProvider = ({ children }) => {
   const logout = useCallback(() => {
     clearStoredSession();
     setUser(null);
-    window.location.replace("/login");
+    window.location.replace("/");
   }, []);
 
   const login = useCallback((token) => {

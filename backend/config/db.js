@@ -3,27 +3,15 @@ const dotenv = require("dotenv");
 
 dotenv.config();
 
-function connectDB() {
-  const dbURI = process.env.MONGO_URI;
+async function connectDB() {
+  const dbURI = process.env.MONGO_URI || process.env.MONGODB_URL;
 
   if (!dbURI) {
-    console.error("MongoDB URI not found in environment variables.");
-    process.exit(1); // Exit process with failure
+    throw new Error("MongoDB URI not found. Set MONGO_URI in the backend environment.");
   }
 
-
-
-  mongoose.connect(dbURI, {
-    useNewUrlParser: true,
-    useUnifiedTopology: true,
-  })
-  .then(() => {
-    console.log("Connected to MongoDB");
-  })
-  .catch((err) => {
-    console.error("MongoDB connection error:", err.message);
-    process.exit(1);
-  });
+  await mongoose.connect(dbURI);
+  console.log("Connected to MongoDB");
 }
 
 module.exports = connectDB;

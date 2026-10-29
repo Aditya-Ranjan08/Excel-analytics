@@ -10,7 +10,7 @@ const ThreeDChartWrapper = ({ data = [], xKey, yKey, onCanvasReady }) => {
   const { values, labels, colors, scale, maxHeight } = useMemo(() => {
     const vals = data.map((d) => Number(d?.[yKey]) || 0);
     const lbs = data.map((d) => String(d?.[xKey] ?? ""));
-    const max = Math.max(1, ...vals);
+    const max = vals.reduce((largest, value) => Math.max(largest, value), 1);
     const targetMaxHeight = 6; // world units (fits camera nicely)
     const s = max > targetMaxHeight ? targetMaxHeight / max : 1;
     const palette = [

@@ -94,7 +94,7 @@ export const getAllUsers = async (req, res) => {
     // Attach last 3 files for each user (lightweight)
     const usersWithCounts = await Promise.all(users.map(async (u) => {
       const files = await Upload.find({ user: u._id })
-        .select("_id originalname createdAt")
+        .select("_id filename createdAt")
         .sort({ createdAt: -1 })
         .limit(3)
         .lean();

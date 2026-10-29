@@ -9,7 +9,7 @@ import { Eye, EyeOff, LoaderCircle } from "lucide-react";
 const inputClass = "mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 hover:border-slate-300 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10";
 
 const Signup = () => {
-  const [data, setData] = useState({ name: "", email: "", password: "", role: "user" });
+  const [data, setData] = useState({ name: "", email: "", password: "" });
   const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const navigate = useNavigate();
@@ -52,12 +52,13 @@ const Signup = () => {
           <div>
             <label htmlFor="signup-password" className="text-sm font-medium text-slate-700">Password</label>
             <div className="relative">
-              <input id="signup-password" name="password" type={showPassword ? "text" : "password"} autoComplete="new-password" placeholder="Create a password" value={data.password} onChange={handleChange} className={`${inputClass} pr-12`} required />
+            <input id="signup-password" name="password" type={showPassword ? "text" : "password"} autoComplete="new-password" placeholder="Create a password" value={data.password} onChange={handleChange} className={`${inputClass} pr-12`} minLength={8} required />
               <button type="button" onClick={() => setShowPassword((visible) => !visible)} aria-label={showPassword ? "Hide password" : "Show password"} className="absolute right-3 top-1/2 -translate-y-1/2 rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700">
                 {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
               </button>
             </div>
           </div>
+          <p className="-mt-2 text-xs text-slate-500">Use at least 8 characters.</p>
           <button type="submit" disabled={submitting} className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-3.5 text-sm font-semibold text-white shadow-lg shadow-emerald-700/15 transition hover:bg-emerald-700 focus:outline-none focus:ring-4 focus:ring-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-70">
             {submitting && <LoaderCircle size={17} className="animate-spin" />}
             {submitting ? "Creating account…" : "Create account"}

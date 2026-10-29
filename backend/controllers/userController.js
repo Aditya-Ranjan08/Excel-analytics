@@ -18,19 +18,30 @@ export const getProfile = async (req, res) => {
 export const updateProfile = async (req, res) => {
   try {
     const { name, email, password } = req.body || {};
+    if (typeof name !== "string" || !name.trim() || typeof email !== "string" || !email.trim()) {
+      return res.status(400).json({ message: "Name and email are required." });
+    }
+    if (name.trim().length > 100) return res.status(400).json({ message: "Name must be 100 characters or less." });
+    if (password && (typeof password !== "string" || password.length < 8)) {
+      return res.status(400).json({ message: "New password must be at least 8 characters long." });
+    }
+    const normalizedEmail = email.trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+      return res.status(400).json({ message: "Enter a valid email address." });
+    }
 
     const user = await User.findById(req.user.id);
     if (!user) return res.status(404).json({ message: "User not found" });
 
-    if (email && email.toLowerCase() !== user.email) {
-      const exists = await User.findOne({ email: email.toLowerCase() });
+    if (normalizedEmail !== user.email) {
+      const exists = await User.findOne({ email: normalizedEmail });
       if (exists && String(exists._id) !== String(user._id)) {
         return res.status(400).json({ message: "Email already in use" });
       }
-      user.email = email.toLowerCase();
+      user.email = normalizedEmail;
     }
     if (name) user.name = name;
-    if (password && password.trim().length > 0) {
+    if (password) {
       user.password = password; // will be hashed by pre-save hook
     }
 

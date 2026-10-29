@@ -30,15 +30,31 @@ export const uploadExcel = async (req, res) => {
     }
 
     // Read Excel and convert to JSON
-    const workbook = xlsx.readFile(filePath);
+    let workbook;
+    try {
+      workbook = xlsx.readFile(filePath, { cellDates: true });
+    } catch {
+      return res.status(400).json({ message: "This file couldn't be read as an Excel workbook. Check the file and try again." });
+    }
     const firstSheetName = workbook.SheetNames[0];
     if (!firstSheetName) {
       return res.status(400).json({ message: "The Excel file has no worksheets" });
     }
     const sheet = workbook.Sheets[firstSheetName];
-    const jsonData = xlsx.utils.sheet_to_json(sheet);
+    let jsonData;
+    try {
+      jsonData = xlsx.utils.sheet_to_json(sheet, { defval: null });
+    } catch {
+      return res.status(400).json({ message: "The first worksheet couldn't be read. Check the sheet and its column headings." });
+    }
     if (jsonData.length === 0) {
       return res.status(400).json({ message: "The first worksheet has no data rows. Add a header row and at least one data row, then try again." });
+    }
+    if (!Object.keys(jsonData[0]).length) {
+      return res.status(400).json({ message: "The first worksheet needs column headings in its first row." });
+    }
+    if (Buffer.byteLength(JSON.stringify(jsonData), "utf8") > 12 * 1024 * 1024) {
+      return res.status(413).json({ message: "This worksheet contains too much expanded data to store safely. Remove some rows or columns and upload it again." });
     }
 
     

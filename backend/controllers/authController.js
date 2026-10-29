@@ -9,13 +9,16 @@ import crypto from "crypto";
 export const signup = async (req, res) => {
   
   try {
-    const { name, email, password, role  } = req.body;
+    const { name, email, password } = req.body || {};
 
-    if (!name || !email || !password || !role) {
-      return res.status(400).json({ msg: 'All fields are required' });
+    if (typeof name !== "string" || typeof email !== "string" || typeof password !== "string" || !name.trim() || !email.trim() || !password) {
+      return res.status(400).json({ msg: "Name, email, and password are required." });
     }
+    if (name.trim().length > 100) return res.status(400).json({ msg: "Name must be 100 characters or less." });
+    if (password.length < 8) return res.status(400).json({ msg: "Password must be at least 8 characters long." });
 
     const trimmedEmail = email.trim().toLowerCase(); 
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) return res.status(400).json({ msg: "Enter a valid email address." });
     const existing = await User.findOne({ email: trimmedEmail });
 
     if (existing) {
@@ -23,10 +26,10 @@ export const signup = async (req, res) => {
     }
 
     const user = await User.create({
-      name,
+      name: name.trim(),
       email: trimmedEmail,
       password,
-      role,
+      role: "user",
     });
 
 
@@ -52,7 +55,9 @@ export const signup = async (req, res) => {
     });
 
   } catch (err) {
-    res.status(500).json({ msg: err.message });
+    console.error("Signup failed:", err.message);
+    if (err.code === 11000) return res.status(409).json({ msg: "An account with this email already exists." });
+    res.status(500).json({ msg: "We couldn't create your account. Please try again." });
   }
 };
 
@@ -60,7 +65,10 @@ export const signup = async (req, res) => {
 // login 
 export const login = async (req, res) => {
   try {
-    const { email, password} = req.body;
+    const { email, password} = req.body || {};
+    if (typeof email !== "string" || typeof password !== "string" || !email.trim() || !password) {
+      return res.status(400).json({ msg: "Enter your email and password." });
+    }
    const trimmedEmail = email.trim().toLowerCase();
     const user = await User.findOne({ email: trimmedEmail });
     if (!user) {
@@ -103,7 +111,8 @@ export const login = async (req, res) => {
       
     });
   } catch (err) {
-    res.status(500).json({ msg: err.message });
+    console.error("Login failed:", err.message);
+    res.status(500).json({ msg: "We couldn't sign you in. Please try again." });
   }
 };
 

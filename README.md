@@ -1,20 +1,31 @@
-# Excel-analytics
-MERN STACK project 
+# Excel Analytics
 
-To install in your system then follow these steps--
+A MERN application for uploading Excel workbooks, previewing their data, building charts, and generating plain-language summaries.
 
-step1. git clone (https://github.com/Aditya-Ranjan08/Excel-analytics.git)
+## Run locally
 
-step2. cd backend = npx nodemon server.js
+1. Install dependencies in both folders:
 
-New terminal 
+   ```bash
+   cd backend && npm install
+   cd ../frontend && npm install
+   ```
 
-<<<<<<< HEAD
-step3. cd frontend = npm run dev if it not work then run npm intsall
-=======
-step3. cd frontend => npm run dev if it not work then run npm intsall
->>>>>>> b7b4f05 (setting up upload route)
-=> npm run dev
-then follow given link
+2. Create `backend/.env` using `backend/.env.example` as a template. Set your MongoDB URI, JWT secret, and email settings for password reset.
+3. Start the backend in one terminal:
 
+   ```bash
+   cd backend && npm run dev
+   ```
 
+4. Start the frontend in another terminal:
+
+   ```bash
+   cd frontend && npm run dev
+   ```
+
+The Vite development server prints the local URL. Set `VITE_API_BASE_URL` in `frontend/.env` when the API is hosted somewhere other than `http://localhost:5000/api`.
+
+## Environment variables
+
+Backend configuration names and placeholders are listed in `backend/.env.example`. Never commit `.env` files or real credentials.

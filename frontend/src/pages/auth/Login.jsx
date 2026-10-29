@@ -11,7 +11,7 @@ const inputClass = "mt-2 w-full rounded-xl border border-slate-200 bg-white px-4
 
 const Login = () => {
   const { login } = useContext(AuthContext);
-  const [data, setData] = useState({ email: "", password: "", role: "user" });
+  const [data, setData] = useState({ email: "", password: "" });
   const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const navigate = useNavigate();
