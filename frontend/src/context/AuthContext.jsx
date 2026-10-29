@@ -1,74 +1,73 @@
 /* eslint-disable react-refresh/only-export-components */
-import { createContext, useState, useEffect, useMemo } from 'react';
-import {jwtDecode} from 'jwt-decode';
-import API from '../api';
-
-
-
-const API_Base_URL = "https://excel-analytics-m5zg.onrender.com";
+import { createContext, useCallback, useEffect, useMemo, useState } from "react";
+import { jwtDecode } from "jwt-decode";
 
 export const AuthContext = createContext();
 
+const clearStoredSession = () => {
+  sessionStorage.removeItem("token");
+  sessionStorage.removeItem("expiryTime");
+  localStorage.removeItem("role");
+};
+
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
-    const [loading] = useState(true); 
+  const [loading, setLoading] = useState(true);
 
-      // Logout = Remove token + reset user
-  const logout = () => {
-    sessionStorage.removeItem("token");
-    sessionStorage.removeItem("expiryTime");
+  const logout = useCallback(() => {
+    clearStoredSession();
     setUser(null);
-    window.location.href = "/login"; // Redirect to login page
-  };
+    window.location.replace("/login");
+  }, []);
 
-  
-    // Login = Save token + set user
-  const login = (token) => {
+  const login = useCallback((token) => {
     const decoded = jwtDecode(token);
-    const expiryTime =  decoded.exp*1000;
+    const expiryTime = Number(decoded.exp) * 1000;
+    if (!decoded.exp || expiryTime <= Date.now()) {
+      throw new Error("The login session is invalid or expired. Please sign in again.");
+    }
 
-    sessionStorage.setItem("expiryTime", expiryTime);
     sessionStorage.setItem("token", token);
+    sessionStorage.setItem("expiryTime", String(expiryTime));
+    if (decoded.role) localStorage.setItem("role", decoded.role);
     setUser(decoded);
-
-    // auto logout
-    const timeout = expiryTime - Date.now();
-    setTimeout(logout, timeout);
-  };
+  }, []);
 
   useEffect(() => {
     const token = sessionStorage.getItem("token");
     const expiryTime = Number(sessionStorage.getItem("expiryTime"));
 
-    if (token && expiryTime) {
-      if (Date.now() >= expiryTime) {
-        logout();
-      } else {
-        setUser(jwtDecode(token));
-        const timeout = expiryTime - Date.now();
-        setTimeout(logout, timeout);
+    if (token && expiryTime > Date.now()) {
+      try {
+        const decoded = jwtDecode(token);
+        if (!decoded.exp || decoded.exp * 1000 <= Date.now()) throw new Error("Expired token");
+        setUser(decoded);
+        if (decoded.role) localStorage.setItem("role", decoded.role);
+      } catch {
+        clearStoredSession();
       }
+    } else if (token || sessionStorage.getItem("expiryTime")) {
+      clearStoredSession();
     }
 
-    // Logout on tab/browser close
-    const handleBeforeUnload = () => {
-      sessionStorage.removeItem("token");
-      sessionStorage.removeItem("expiryTime");
-    };
-    window.addEventListener('beforeunload', handleBeforeUnload);
-    return () => {
-      window.removeEventListener('beforeunload', handleBeforeUnload);
-    };
+    setLoading(false);
   }, []);
 
-  
-  const contextValue = useMemo(() => ({ user, login, logout, loading }), [user, loading]);
+  useEffect(() => {
+    if (!user) return undefined;
+    const expiryTime = Number(sessionStorage.getItem("expiryTime"));
+    const timeout = expiryTime - Date.now();
+    if (timeout <= 0) {
+      logout();
+      return undefined;
+    }
+    const timer = window.setTimeout(logout, timeout);
+    return () => window.clearTimeout(timer);
+  }, [user, logout]);
 
-  return (
-    <AuthContext.Provider value={contextValue}>
-      {children}
-    </AuthContext.Provider>
-  );
+  const contextValue = useMemo(() => ({ user, login, logout, loading }), [user, login, logout, loading]);
+
+  return <AuthContext.Provider value={contextValue}>{children}</AuthContext.Provider>;
 };
 
 export default AuthContext;

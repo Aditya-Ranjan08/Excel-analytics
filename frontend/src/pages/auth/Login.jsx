@@ -1,105 +1,75 @@
 import { useState, useContext } from "react";
-import axios from "axios";
+import API from "../../api";
+import AuthLayout from "../../components/AuthLayout";
 import { AuthContext } from "../../context/AuthContext";
 import { Link, useNavigate } from "react-router-dom";
 import { toast, ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
-import { Eye, EyeOff } from "lucide-react"; // Optional: Install lucide-react for icons
+import { Eye, EyeOff, LoaderCircle } from "lucide-react";
 
-const Login = ({ setRole }) => {
+const inputClass = "mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 hover:border-slate-300 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10";
+
+const Login = () => {
   const { login } = useContext(AuthContext);
   const [data, setData] = useState({ email: "", password: "", role: "user" });
   const [showPassword, setShowPassword] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const navigate = useNavigate();
 
-  const handleChange = (e) =>
-    setData({ ...data, [e.target.name]: e.target.value });
+  const handleChange = (e) => setData({ ...data, [e.target.name]: e.target.value });
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
-      const res = await axios.post("https://excel-analytics-m5zg.onrender.com/api/auth/login", data);
-
+      setSubmitting(true);
+      const res = await API.post("/auth/login", data);
       login(res.data.token);
-      setRole(res.data.user.role);
-
-      toast.success("Login successful ✅", {
-        position: "top-right",
-        autoClose: 3000,
-      });
-
-      if (res.data.user.role === "admin") {
-        navigate("/admin");
-      } else {
-        navigate("/dashboard");
-      }
+      localStorage.setItem("role", res.data.user.role);
+      toast.success("Welcome back!");
+      navigate(res.data.user.role === "admin" ? "/admin" : "/dashboard");
     } catch (err) {
       console.error("Login failed:", err.response?.data || err.message);
-      toast.error("Invalid credentials ❌", {
-        position: "top-right",
-        autoClose: 3000,
-      });
+      toast.error(err.response?.data?.msg || err.response?.data?.message || "We couldn't sign you in. Check your details and try again.");
+    } finally {
+      setSubmitting(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-tr from-purple-500 to-green-500 px-4">
-      <ToastContainer />
-      <form
-        onSubmit={handleSubmit}
-        className="bg-white p-6 sm:p-8 rounded-lg shadow-lg w-full max-w-md"
+    <>
+      <ToastContainer position="top-right" autoClose={3000} />
+      <AuthLayout
+        eyebrow="Welcome back"
+        title="Log in to your account"
+        description="Pick up where you left off and get back to your data."
+        footer={<>New to Excel Analytics? <Link to="/signup" className="font-semibold text-emerald-700 hover:text-emerald-800">Create an account</Link></>}
       >
-        <h1 className="text-2xl font-bold mb-2 text-center">Welcome back!</h1>
-        <h3 className="text-sm mb-6 text-center">Login to continue</h3>
+        <form onSubmit={handleSubmit} className="space-y-5">
+          <div>
+            <label htmlFor="login-email" className="text-sm font-medium text-slate-700">Email address</label>
+            <input id="login-email" name="email" type="email" autoComplete="email" placeholder="you@example.com" value={data.email} onChange={handleChange} className={inputClass} required />
+          </div>
 
-        <label>Email address</label>
-        <input
-          name="email"
-          placeholder="Email"
-          onChange={handleChange}
-          className="mb-5 w-full px-4 py-2 border rounded focus:outline-none"
-          required
-        />
+          <div>
+            <div className="flex items-center justify-between gap-3">
+              <label htmlFor="login-password" className="text-sm font-medium text-slate-700">Password</label>
+              <Link to="/forgot-password" className="text-xs font-semibold text-emerald-700 hover:text-emerald-800">Forgot password?</Link>
+            </div>
+            <div className="relative">
+              <input id="login-password" name="password" type={showPassword ? "text" : "password"} autoComplete="current-password" placeholder="Enter your password" value={data.password} onChange={handleChange} className={`${inputClass} pr-12`} required />
+              <button type="button" onClick={() => setShowPassword((visible) => !visible)} aria-label={showPassword ? "Hide password" : "Show password"} className="absolute right-3 top-1/2 -translate-y-1/2 rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700">
+                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
+            </div>
+          </div>
 
-        <label>Password</label>
-        <div className="relative mb-8">
-          <input
-            type={showPassword ? "text" : "password"}
-            name="password"
-            placeholder="Password"
-            onChange={handleChange}
-            className="w-full px-4 py-2 border rounded focus:outline-none pr-10"
-            required
-          />
-          <button
-            type="button"
-            onClick={() => setShowPassword(!showPassword)}
-            className="absolute right-3 top-2.5 text-gray-600"
-          >
-            {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+          <button type="submit" disabled={submitting} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-3.5 text-sm font-semibold text-white shadow-lg shadow-emerald-700/15 transition hover:bg-emerald-700 focus:outline-none focus:ring-4 focus:ring-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-70">
+            {submitting && <LoaderCircle size={17} className="animate-spin" />}
+            {submitting ? "Logging in…" : "Log in"}
           </button>
-        </div>
-        <p className="mb-3 text-sm text-left">
-         <Link to="/forgot-password" className="text-blue-500 cursor-pointer">
-          Forgot Password?
-           </Link>
-        </p>
-
-        <button
-          type="submit"
-          className="w-full bg-blue-500 text-white py-2 rounded hover:bg-blue-600 transition cursor-pointer"
-        >
-          Login
-        </button>
-
-        <p className="mt-4 text-sm text-center">
-          Don’t have an account?{" "}
-          <Link to="/signup" className="text-blue-500 cursor-pointer">
-            Signup
-          </Link>
-        </p>
-      </form>
-    </div>
+        </form>
+      </AuthLayout>
+    </>
   );
 };
 

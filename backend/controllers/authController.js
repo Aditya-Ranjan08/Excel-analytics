@@ -108,34 +108,58 @@ export const login = async (req, res) => {
 };
 
 
-// sendgrid mail
-sgMail.setApiKey(process.env.SENDGRID_API_KEY);
-
 // Forgot Password
 export const forgotPassword = async (req, res) => {
-  const { email } = req.body;
   try {
-    const user = await User.findOne({ email });
-    if (!user) return res.status(404).json({ message: "User not found" });
+    const email = req.body.email?.trim().toLowerCase();
+    if (!email) return res.status(400).json({ message: "Enter the email address for your account." });
 
-    const token = crypto.randomBytes(20).toString("hex");
-    user.resetPasswordToken = token;
+    const frontendUrl = (process.env.CLIENT_URL || process.env.FRONTEND_URL || "").replace(/\/$/, "");
+    if (!process.env.SENDGRID_API_KEY || !process.env.FROM_EMAIL || !frontendUrl) {
+      return res.status(503).json({ message: "Password reset email is not configured. Please contact support." });
+    }
+
+    const user = await User.findOne({ email });
+    // Always return the same response so callers cannot discover registered email addresses.
+    if (!user) {
+      return res.status(200).json({ message: "If an account exists for that email, a reset link will arrive shortly." });
+    }
+
+    const token = crypto.randomBytes(32).toString("hex");
+    user.resetPasswordToken = crypto.createHash("sha256").update(token).digest("hex");
     user.resetPasswordExpire = Date.now() + 15 * 60 * 1000; // 15 mins
     await user.save();
 
-    const resetURL =`${process.env.CLIENT_URL}/reset-password/${token}`;
+    const resetURL = `${frontendUrl}/reset-password/${token}`;
+    sgMail.setApiKey(process.env.SENDGRID_API_KEY);
     const msg = {
       to: user.email,
       from: process.env.FROM_EMAIL,
       subject: "Password Reset Request",
-      html: `<p>Click <a href="${resetURL}">here</a> to reset your password. This link expires in 15 minutes.</p>`,
+      text: `Use this link to reset your password. The link expires in 15 minutes: ${resetURL}`,
+      html: `<p>We received a request to reset your password.</p><p><a href="${resetURL}">Reset your password</a></p><p>This link expires in 15 minutes. If you did not request this, you can ignore this email.</p>`,
     };
 
     await sgMail.send(msg);
-    res.json({ message: "Reset link sent to email" });
+    return res.status(200).json({ message: "If an account exists for that email, a reset link will arrive shortly." });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Error sending reset email" });
+    console.error("Password reset email failed:", err.message);
+    return res.status(502).json({ message: "We couldn't send the reset email. Please try again shortly." });
+  }
+};
+
+export const validateResetToken = async (req, res) => {
+  try {
+    const tokenHash = crypto.createHash("sha256").update(req.params.token || "").digest("hex");
+    const user = await User.findOne({
+      resetPasswordToken: tokenHash,
+      resetPasswordExpire: { $gt: Date.now() },
+    });
+    if (!user) return res.status(400).json({ message: "This reset link is invalid or has expired." });
+    return res.status(200).json({ message: "Reset link is valid." });
+  } catch (err) {
+    console.error("Reset token validation failed:", err.message);
+    return res.status(500).json({ message: "We couldn't verify this reset link." });
   }
 };
 
@@ -144,8 +168,12 @@ export const resetPassword = async (req, res) => {
   const { token } = req.params;
   const { password } = req.body;
   try {
+    if (typeof password !== "string" || password.length < 8) {
+      return res.status(400).json({ message: "Password must be at least 8 characters long." });
+    }
+    const tokenHash = crypto.createHash("sha256").update(token || "").digest("hex");
     const user = await User.findOne({
-      resetPasswordToken: token,
+      resetPasswordToken: tokenHash,
       resetPasswordExpire: { $gt: Date.now() },
     });
 
@@ -157,9 +185,9 @@ export const resetPassword = async (req, res) => {
     user.resetPasswordExpire = undefined;
     await user.save();
 
-    res.json({ message: "Password reset successful" });
+    return res.json({ message: "Password updated. You can now log in with your new password." });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Error resetting password" });
+    console.error("Password reset failed:", err.message);
+    return res.status(500).json({ message: "We couldn't update your password. Please try again." });
   }
 };

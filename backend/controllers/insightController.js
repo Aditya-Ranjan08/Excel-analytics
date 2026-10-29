@@ -1,203 +1,127 @@
+import mongoose from "mongoose";
 import Upload from "../models/Upload.js";
-import dotenv from "dotenv";
-dotenv.config();
 
-// Utility: basic stats for numeric columns
-const computeColumnStats = (rows, key) => {
-  const values = rows
-    .map((r) => Number(r?.[key]))
-    .filter((v) => typeof v === "number" && !Number.isNaN(v));
-  if (values.length === 0) return null;
+const parseNumber = (value) => {
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+  if (typeof value !== "string") return null;
+  let normalized = value.trim().replace(/[,$₹€£¥\s]/g, "").replace(/%$/, "");
+  if (!normalized) return null;
+  if (/^\(.*\)$/.test(normalized)) normalized = `-${normalized.slice(1, -1)}`;
+  if (!/^[+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?$/i.test(normalized)) return null;
+  const number = Number(normalized);
+  return Number.isFinite(number) ? number : null;
+};
 
-  const count = values.length;
-  const sum = values.reduce((a, b) => a + b, 0);
-  const mean = sum / count;
-  const min = Math.min(...values);
-  const max = Math.max(...values);
-  const variance =
-    count > 1
-      ? values.reduce((acc, v) => acc + Math.pow(v - mean, 2), 0) / (count - 1)
-      : 0;
-  const std = Math.sqrt(variance);
-  return { count, mean, min, max, std };
+const formatNumber = (value) => Number(value).toLocaleString("en-IN", { maximumFractionDigits: 2 });
+const isBlank = (value) => value === null || value === undefined || (typeof value === "string" && !value.trim());
+const parseDateCell = (value) => {
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
+  if (typeof value === "number" && value >= 1 && value <= 100000) return new Date(Date.UTC(1899, 11, 30) + value * 86400000);
+  if (typeof value === "string" && /^\d{4}$/.test(value.trim())) return new Date(`${value.trim()}-01-01T00:00:00Z`);
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+};
+
+const makeColumnStats = (rows, column) => {
+  const values = rows.map((row) => parseNumber(row?.[column])).filter((value) => value !== null);
+  if (!values.length) return null;
+  const sum = values.reduce((total, value) => total + value, 0);
+  const { min, max } = values.reduce((range, value) => ({ min: Math.min(range.min, value), max: Math.max(range.max, value) }), { min: values[0], max: values[0] });
+  return {
+    count: values.length,
+    sum,
+    average: sum / values.length,
+    min,
+    max,
+  };
+};
+
+const buildInsights = (rows, columns, metrics) => {
+  const insights = [{
+    title: "Workbook overview",
+    detail: `Your sheet has ${rows.length.toLocaleString()} records (rows) and ${columns.length} fields (columns). Fields: ${columns.join(", ")}.`,
+  }];
+
+  const numericColumns = Object.keys(metrics);
+  if (numericColumns.length) {
+    const numericDetails = numericColumns.slice(0, 3).map((column) => {
+      const stats = metrics[column];
+      return `${column}: the average is ${formatNumber(stats.average)} per row; the lowest value is ${formatNumber(stats.min)} and the highest is ${formatNumber(stats.max)}${stats.count < rows.length ? ` (${stats.count.toLocaleString()} rows had a number)` : ""}`;
+    });
+    insights.push({ title: "Numeric columns", detail: `${numericDetails.join(". ")}.${numericColumns.length > 3 ? ` ${numericColumns.length - 3} more numeric columns are available.` : ""}` });
+  } else {
+    insights.push({ title: "Numeric data", detail: "No numeric columns were detected, so charts can compare categories or count rows instead of measuring numeric values." });
+  }
+
+  const categoryHighlights = columns.flatMap((column) => {
+    const values = rows.map((row) => row?.[column]).filter((value) => !isBlank(value));
+    if (!values.length || values.some((value) => parseNumber(value) !== null)) return [];
+    const counts = new Map();
+    values.forEach((value) => {
+      const label = String(value).trim();
+      counts.set(label, (counts.get(label) || 0) + 1);
+    });
+    if (counts.size < 2 || counts.size > Math.max(30, rows.length * 0.8)) return [];
+    const [label, count] = [...counts.entries()].sort((a, b) => b[1] - a[1])[0];
+    return [{ column, label, count, share: (count / values.length) * 100 }];
+  }).sort((a, b) => b.share - a.share);
+  if (categoryHighlights.length) {
+    const top = categoryHighlights[0];
+    insights.push({ title: "Most common category", detail: `“${top.label}” is the most common value in “${top.column}”: it appears in ${top.count.toLocaleString()} of ${rows.length.toLocaleString()} rows (${formatNumber(top.share)}%).` });
+  }
+
+  const dateColumn = columns.find((column) => /date|time/i.test(column));
+  if (dateColumn) {
+    const dates = rows.map((row) => parseDateCell(row?.[dateColumn])).filter(Boolean);
+    if (dates.length) {
+      const { min, max } = dates.reduce((range, date) => ({ min: date < range.min ? date : range.min, max: date > range.max ? date : range.max }), { min: dates[0], max: dates[0] });
+      const displayDate = (date) => date.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+      insights.push({ title: "Date coverage", detail: `The “${dateColumn}” values run from ${displayDate(min)} to ${displayDate(max)} (${dates.length.toLocaleString()} valid dates).` });
+    }
+  }
+
+  const missingByColumn = columns.map((column) => ({ column, count: rows.filter((row) => isBlank(row?.[column])).length })).filter((item) => item.count > 0);
+  const missingCount = missingByColumn.reduce((total, item) => total + item.count, 0);
+  const cellCount = rows.length * columns.length;
+  if (missingCount) {
+    const mostMissing = missingByColumn.sort((a, b) => b.count - a.count)[0];
+    insights.push({ title: "Data completeness", detail: `${missingCount.toLocaleString()} of ${cellCount.toLocaleString()} cells are blank (${formatNumber((missingCount / cellCount) * 100)}%). “${mostMissing.column}” has the most blanks (${mostMissing.count.toLocaleString()}).` });
+  } else {
+    insights.push({ title: "Data completeness", detail: `All ${cellCount.toLocaleString()} cells in the uploaded rows contain a value.` });
+  }
+
+  return insights;
 };
 
 // GET /api/insights/:uploadId
 export const getInsightSummary = async (req, res) => {
   try {
     const { uploadId } = req.params;
-    if (!uploadId) return res.status(400).json({ message: "uploadId is required" });
+    if (!mongoose.Types.ObjectId.isValid(uploadId)) return res.status(400).json({ message: "Invalid upload ID" });
 
-    // Ensure the upload belongs to the requesting user
-    const upload = await Upload.findById(uploadId);
-    if (!upload) return res.status(404).json({ message: "Upload not found" });
-    if (String(upload.user) !== String(req.user.id)) {
-      return res.status(403).json({ message: "Forbidden" });
-    }
+    const upload = await Upload.findOne({ _id: uploadId, user: req.user.id });
+    if (!upload) return res.status(404).json({ message: "Workbook not found in your history" });
+    if (upload.status !== "success") return res.status(422).json({ message: "This workbook did not upload successfully. Upload it again before analyzing." });
 
     const rows = Array.isArray(upload.parsedData) ? upload.parsedData : [];
-    if (rows.length === 0) return res.status(200).json({ summary: "No data rows found in this file.", metrics: {}, filename: upload.filename });
+    if (!rows.length) return res.status(200).json({ filename: upload.filename, rowCount: 0, columnCount: 0, metrics: {}, insights: [], summary: "No data rows were found in this workbook.", summarySource: "built-in" });
 
-    const keys = Object.keys(rows[0] || {});
+    const columns = [...new Set(rows.flatMap((row) => row && typeof row === "object" ? Object.keys(row) : []))];
+    const metrics = Object.fromEntries(columns.map((column) => [column, makeColumnStats(rows, column)]).filter(([, stats]) => stats));
+    const insights = buildInsights(rows, columns, metrics);
+    const summary = insights.map(({ title, detail }) => `${title}: ${detail}`).join("\n\n");
 
-    // Identify numeric columns and compute basic stats
-    const metrics = {};
-    keys.forEach((key) => {
-      const stats = computeColumnStats(rows, key);
-      if (stats) metrics[key] = stats;
-    });
-
-    // Try to infer a year/temporal column
-    const yearKey = keys.find((k) => /year|date/i.test(k));
-    let yearsSpanText = "";
-    if (yearKey) {
-      const years = rows
-        .map((r) => Number(r?.[yearKey]))
-        .filter((v) => !Number.isNaN(v));
-      if (years.length) {
-        const minY = Math.min(...years);
-        const maxY = Math.max(...years);
-        const span = maxY - minY + 1;
-        yearsSpanText = `The data spans ${span} ${span > 1 ? "years" : "year"} (${minY}–${maxY}).`;
-      }
-    }
-
-  // Build a single-paragraph narrative summary like the provided example
-    const numericCols = Object.keys(metrics);
-
-    // Utilities
-    const fmt = (n, digits = 2) => (Number.isFinite(n) ? Number(n).toLocaleString("en-US", { maximumFractionDigits: digits }) : "N/A");
-    const arrOf = (col) => rows.map((r) => Number(r?.[col])).filter((v) => Number.isFinite(v));
-    const sum = (a) => a.reduce((x, y) => x + y, 0);
-    const pearson = (x, y) => {
-      const n = Math.min(x.length, y.length);
-      if (n < 3) return NaN;
-      const mx = x.reduce((a, b) => a + b, 0) / n;
-      const my = y.reduce((a, b) => a + b, 0) / n;
-      let num = 0, dx = 0, dy = 0;
-      for (let i = 0; i < n; i++) {
-        const vx = x[i] - mx;
-        const vy = y[i] - my;
-        num += vx * vy;
-        dx += vx * vx;
-        dy += vy * vy;
-      }
-      const den = Math.sqrt(dx * dy);
-      return den ? num / den : NaN;
-    };
-
-    // Try to detect business-friendly columns
-    const findCol = (re) => keys.find((k) => re.test(k));
-    const revenueCol = findCol(/revenue|sales?_?(amount|total)?|turnover|total_?revenue|gross_?sales/i);
-    const qtyCol = findCol(/qty|quantity|units?|unit_?sold|pieces|item_?count/i);
-    const priceCol = findCol(/price|unit[_\s-]?price|cost[_\s-]?per[_\s-]?unit|rate/i);
-
-    const revArr = revenueCol ? arrOf(revenueCol) : [];
-    const qtyArr = qtyCol ? arrOf(qtyCol) : [];
-    const totalRevenue = revArr.length ? sum(revArr) : null;
-    const totalQty = qtyArr.length ? sum(qtyArr) : null;
-    const avgPrice = priceCol && metrics[priceCol] ? metrics[priceCol].mean : null;
-
-    // Quantity-Revenue correlation
-    let corrSnippet = null;
-    if (revArr.length && qtyArr.length) {
-      const n = Math.min(revArr.length, qtyArr.length);
-      const r = pearson(revArr.slice(0, n), qtyArr.slice(0, n));
-      if (Number.isFinite(r)) {
-        const strength = Math.abs(r) >= 0.6 ? "strong" : Math.abs(r) >= 0.3 ? "moderate" : "weak";
-        const direction = r >= 0 ? "positive" : "negative";
-        corrSnippet = `The ${qtyCol || "quantity"} shows a ${strength} ${direction} correlation with ${revenueCol || "revenue"} (r = ${fmt(r, 2)}).`;
-      }
-    }
-
-    // Compose 3–5 insights
-    const intro = `Based on the provided summary statistics from the Excel data, we can draw the following insights:`;
-    const insights = [];
-
-    if (totalQty !== null || totalRevenue !== null) {
-      const parts = [];
-      if (totalQty !== null) parts.push(`a total of ${fmt(totalQty)} units sold`);
-      if (totalRevenue !== null) parts.push(`total ${revenueCol || "revenue"} of ${fmt(totalRevenue)}`);
-      const suffix = yearsSpanText ? ` ${yearsSpanText}` : "";
-      insights.push(`1. **Total Performance**: ${parts.join(", ")} were recorded.${suffix}`);
-    }
-
-    if (avgPrice !== null) {
-      const std = metrics[priceCol]?.std;
-      insights.push(`2. **Pricing Analysis**: The average ${priceCol || "price"} is ${fmt(avgPrice)}${Number.isFinite(std) ? ` (σ ≈ ${fmt(std)})` : ""}.`);
-    }
-
-    if (corrSnippet) {
-      insights.push(`3. **Quantity and Revenue Correlation**: ${corrSnippet}`);
-    }
-
-    // Fallbacks from stats if needed
-    if (insights.length < 3 && numericCols.length) {
-      const means = numericCols
-        .map((k) => ({ k, mean: metrics[k].mean }))
-        .sort((a, b) => b.mean - a.mean)
-        .slice(0, Math.min(3, numericCols.length));
-      if (means.length) {
-        insights.push(`${insights.length + 1}. **Top Averages**: ${means.map((m) => `${m.k}: ${fmt(m.mean)}`).join(", ")}.`);
-      }
-      const variability = numericCols
-        .map((k) => ({ k, std: metrics[k].std }))
-        .sort((a, b) => b.std - a.std);
-      if (variability[0]) {
-        insights.push(`${insights.length + 1}. **Variability**: Highest variability observed in '${variability[0].k}' (σ ≈ ${fmt(variability[0].std)}).`);
-      }
-    }
-
-    if (!insights.length) {
-      insights.push(`1. **Overview**: No strong numeric insights detected.`);
-    }
-
-    let summaryText = `${intro} ${insights.join(" ")}`;
-  let summarySource = "rule-based";
-  let modelUsed = null;
-
-  // If OpenAI is configured, ask it to write a concise, user-friendly summary
-  if (process.env.OPENAI_API_KEY) {
-      try {
-    const { default: OpenAI } = await import("openai");
-    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-  const prompt = `You are a data analyst. Write a single-paragraph narrative like this style: \n"Based on the provided summary statistics from the Excel data, we can draw the following insights: 1. **Total Performance**: ... 2. **Pricing Analysis**: ... 3. **Quantity and Revenue Correlation**: ..."\nUse 3–5 numbered insights, each with a short bold title followed by a concise explanation with rounded numbers. Avoid inventing columns. Include time span if present.
-
-Years: ${yearsSpanText || "N/A"}
-Row count: ${rows.length}
-Columns: ${keys.length}
-Metrics (JSON): ${JSON.stringify(metrics)}
-`;
-        modelUsed = process.env.OPENAI_MODEL || "gpt-4o-mini";
-        const completion = await openai.chat.completions.create({
-          model: modelUsed,
-          messages: [
-      { role: "system", content: "You write brief, neutral data insights as a single paragraph with numbered, bold-titled insights." },
-            { role: "user", content: prompt },
-          ],
-          temperature: 0.4,
-          max_tokens: 250,
-        });
-        const aiText = completion.choices?.[0]?.message?.content?.trim();
-        if (aiText) {
-          summaryText = aiText;
-          summarySource = "openai";
-        }
-      } catch (e) {
-        // If OpenAI fails, keep the basic summary
-      }
-    }
-
-    res.json({
+    return res.json({
       filename: upload.filename,
-      metrics,
-      summary: summaryText,
       rowCount: rows.length,
-      summarySource,
-      model: modelUsed,
+      columnCount: columns.length,
+      metrics,
+      insights,
+      summary,
+      summarySource: "built-in",
     });
-  } catch (err) {
-    console.error("Insight error:", err);
-    res.status(500).json({ message: "Failed to generate insights" });
+  } catch (error) {
+    console.error("Insight error:", error);
+    return res.status(500).json({ message: "Failed to generate insights" });
   }
 };

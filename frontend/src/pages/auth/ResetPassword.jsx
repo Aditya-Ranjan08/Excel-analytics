@@ -1,112 +1,122 @@
-import { useState } from "react";
-import { useParams, Link, useNavigate } from "react-router-dom";
-import axios from "axios";
-import { toast, ToastContainer } from "react-toastify";
-import "react-toastify/dist/ReactToastify.css";
-import { Eye, EyeOff } from "lucide-react";
+import { useEffect, useState } from "react";
+import { useParams, Link } from "react-router-dom";
+import API from "../../api";
+import AuthLayout from "../../components/AuthLayout";
+import { Check, Eye, EyeOff, LoaderCircle, LockKeyhole } from "lucide-react";
+
+const passwordInputClass = "w-full border-0 bg-transparent px-1 py-3 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:ring-0";
 
 export default function ResetPassword() {
   const { token } = useParams();
-  console.log(token);
-  const navigate = useNavigate();
+  const [tokenState, setTokenState] = useState("checking");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let active = true;
+    API.get(`/auth/reset-password/${token}`)
+      .then(() => { if (active) setTokenState("valid"); })
+      .catch((err) => {
+        if (!active) return;
+        setError(err.response?.data?.message || "This reset link is invalid or has expired.");
+        setTokenState("invalid");
+      });
+    return () => { active = false; };
+  }, [token]);
 
   const handleReset = async (e) => {
     e.preventDefault();
-
+    setError("");
+    if (password.length < 8) {
+      setError("Use at least 8 characters for your new password.");
+      return;
+    }
     if (password !== confirmPassword) {
-      toast.error("Passwords do not match ❌", {
-        position: "top-right",
-        autoClose: 3000,
-      });
+      setError("The passwords don't match. Check them and try again.");
       return;
     }
 
     try {
-      const res = await axios.put(
-        `https://excel-analytics-m5zg.onrender.com/api/auth/reset-password/${token}`,
-        { password }
-      );
-      
-      toast.success(res.data.message || "Password updated successfully ✅", {
-        position: "top-right",
-        autoClose: 3000,
-      });
-
-      setTimeout(() => navigate("/login"), 3000);
+      setSubmitting(true);
+      await API.put(`/auth/reset-password/${token}`, { password });
+      setTokenState("complete");
     } catch (err) {
-      toast.error(err.response?.data?.message || "Something went wrong ❌", {
-        position: "top-right",
-        autoClose: 3000,
-      });
+      setError(err.response?.data?.message || "We couldn't update your password. Please request a new link.");
+    } finally {
+      setSubmitting(false);
     }
   };
 
+  const toggleButton = (visible, setVisible, label) => (
+    <button type="button" onClick={() => setVisible((value) => !value)} aria-label={visible ? `Hide ${label}` : `Show ${label}`} className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700">
+      {visible ? <EyeOff size={18} /> : <Eye size={18} />}
+    </button>
+  );
+
+  let title = "Choose a new password";
+  let description = "Create a new password to secure your account.";
+  if (tokenState === "checking") {
+    title = "Checking your link";
+    description = "Please wait while we verify that this reset link is still valid.";
+  } else if (tokenState === "invalid") {
+    title = "Reset link unavailable";
+    description = "This link may have expired or already been used.";
+  } else if (tokenState === "complete") {
+    title = "Password updated";
+    description = "Your password is ready. Log in with your new credentials.";
+  }
+
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-tr from-purple-500 to-green-500 px-4">
-      <ToastContainer />
-      <form
-        onSubmit={handleReset}
-        className="bg-white p-6 sm:p-8 rounded-lg shadow-lg w-full max-w-md"
-      >
-        <h1 className="text-2xl font-bold mb-2 text-center">Reset Password</h1>
-        <h3 className="text-sm mb-6 text-center">Enter your new password</h3>
-
-        {/* New Password */}
-        <div className="relative mb-6">
-          <input
-            type={showPassword ? "text" : "password"}
-            placeholder="New password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className="w-full px-4 py-2 border rounded focus:outline-none pr-10"
-            required
-          />
-          <button
-            type="button"
-            onClick={() => setShowPassword(!showPassword)}
-            className="absolute right-3 top-2.5 text-gray-600"
-          >
-            {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
-          </button>
+    <AuthLayout
+      eyebrow="Secure account recovery"
+      title={title}
+      description={description}
+      footer={<>Remembered it? <Link to="/login" className="font-semibold text-emerald-700 hover:text-emerald-800">Back to log in</Link></>}
+    >
+      {tokenState === "checking" ? (
+        <div className="flex items-center justify-center gap-3 rounded-xl bg-slate-50 p-6 text-sm text-slate-500" role="status"><LoaderCircle size={18} className="animate-spin text-emerald-600" /> Verifying secure link…</div>
+      ) : tokenState === "invalid" ? (
+        <div className="space-y-4">
+          <p className="rounded-xl border border-amber-100 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-800" role="alert">{error}</p>
+          <Link to="/forgot-password" className="inline-flex w-full items-center justify-center rounded-xl bg-emerald-600 px-4 py-3.5 text-sm font-semibold text-white transition hover:bg-emerald-700">Request a new reset link</Link>
         </div>
-
-        {/* Confirm Password */}
-        <div className="relative mb-8">
-          <input
-            type={showConfirmPassword ? "text" : "password"}
-            placeholder="Confirm password"
-            value={confirmPassword}
-            onChange={(e) => setConfirmPassword(e.target.value)}
-            className="w-full px-4 py-2 border rounded focus:outline-none pr-10"
-            required
-          />
-          <button
-            type="button"
-            onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-            className="absolute right-3 top-2.5 text-gray-600"
-          >
-            {showConfirmPassword ? <EyeOff size={20} /> : <Eye size={20} />}
-          </button>
+      ) : tokenState === "complete" ? (
+        <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-5 sm:p-6" role="status">
+          <span className="grid h-11 w-11 place-items-center rounded-full bg-white text-emerald-700 shadow-sm"><Check size={21} /></span>
+          <p className="mt-4 font-semibold text-slate-900">You're all set</p>
+          <p className="mt-2 text-sm leading-6 text-slate-600">Your password has been changed. Your reset link can no longer be used.</p>
+          <Link to="/login" className="mt-5 inline-flex w-full items-center justify-center rounded-xl bg-emerald-600 px-4 py-3.5 text-sm font-semibold text-white transition hover:bg-emerald-700">Continue to log in</Link>
         </div>
-
-        <button
-          type="submit"
-          className="w-full bg-blue-500 text-white py-2 rounded hover:bg-blue-600 transition cursor-pointer"
-        >
-          Update Password
-        </button>
-
-        <p className="mt-4 text-sm text-center">
-          Back to{" "}
-          <Link to="/login" className="text-blue-500 cursor-pointer">
-            Login
-          </Link>
-        </p>
-      </form>
-    </div>
+      ) : (
+        <form onSubmit={handleReset} className="space-y-5">
+          <div>
+            <label htmlFor="new-password" className="text-sm font-medium text-slate-700">New password</label>
+            <div className="mt-2 flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 focus-within:border-emerald-500 focus-within:ring-4 focus-within:ring-emerald-500/10">
+              <LockKeyhole size={17} className="shrink-0 text-slate-400" />
+              <input id="new-password" type={showPassword ? "text" : "password"} autoComplete="new-password" placeholder="At least 8 characters" value={password} onChange={(e) => setPassword(e.target.value)} className={passwordInputClass} minLength={8} required />
+              {toggleButton(showPassword, setShowPassword, "password")}
+            </div>
+          </div>
+          <div>
+            <label htmlFor="confirm-password" className="text-sm font-medium text-slate-700">Confirm new password</label>
+            <div className="mt-2 flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 focus-within:border-emerald-500 focus-within:ring-4 focus-within:ring-emerald-500/10">
+              <LockKeyhole size={17} className="shrink-0 text-slate-400" />
+              <input id="confirm-password" type={showConfirmPassword ? "text" : "password"} autoComplete="new-password" placeholder="Enter it one more time" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className={passwordInputClass} minLength={8} required />
+              {toggleButton(showConfirmPassword, setShowConfirmPassword, "confirmation password")}
+            </div>
+          </div>
+          {error && <p className="rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700" role="alert">{error}</p>}
+          <button type="submit" disabled={submitting} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-3.5 text-sm font-semibold text-white shadow-lg shadow-emerald-700/15 transition hover:bg-emerald-700 focus:outline-none focus:ring-4 focus:ring-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-70">
+            {submitting && <LoaderCircle size={17} className="animate-spin" />}
+            {submitting ? "Updating password…" : "Update password"}
+          </button>
+          <p className="text-center text-xs text-slate-400">Use at least 8 characters. This link expires after 15 minutes.</p>
+        </form>
+      )}
+    </AuthLayout>
   );
 }

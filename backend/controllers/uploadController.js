@@ -11,7 +11,7 @@ export const uploadExcel = async (req, res) => {
       return res.status(400).json({ message: "No file uploaded" });
     }
 
-    const filePath = path.resolve("uploads", req.file.filename);
+    const filePath = req.file.path || path.resolve("uploads", req.file.filename);
 
     // Prevent duplicate uploads by filename for the same user
     try {
@@ -31,23 +31,28 @@ export const uploadExcel = async (req, res) => {
 
     // Read Excel and convert to JSON
     const workbook = xlsx.readFile(filePath);
-    const sheet = workbook.Sheets[workbook.SheetNames[0]];
+    const firstSheetName = workbook.SheetNames[0];
+    if (!firstSheetName) {
+      return res.status(400).json({ message: "The Excel file has no worksheets" });
+    }
+    const sheet = workbook.Sheets[firstSheetName];
     const jsonData = xlsx.utils.sheet_to_json(sheet);
+    if (jsonData.length === 0) {
+      return res.status(400).json({ message: "The first worksheet has no data rows. Add a header row and at least one data row, then try again." });
+    }
 
     
     // Save to database with status = success
-    await Upload.create({
+    const savedUpload = await Upload.create({
       user: req.user?.id || null,
       filename: req.file.originalname,
       parsedData: jsonData,
       status: "success",
     });
 
-    // Delete file from uploads/
-    fs.unlinkSync(filePath);
-
     return res.status(200).json({ 
       msg: "File uploaded and data parsed successfully",
+      uploadId: savedUpload._id,
       data: jsonData,
     });
 
@@ -56,7 +61,7 @@ export const uploadExcel = async (req, res) => {
 
     try {
       await Upload.create({
-        user: req.user?._id || null,
+        user: req.user?.id,
         filename: req.file?.originalname || "unknown",
         parsedData: [],
         status: "fail", // Save as failed
@@ -69,6 +74,9 @@ export const uploadExcel = async (req, res) => {
       message: "Upload failed",
       error: err.message,
     });
+  } finally {
+    const tempFilePath = req.file?.path;
+    if (tempFilePath && fs.existsSync(tempFilePath)) fs.unlinkSync(tempFilePath);
   }
 };
 
@@ -77,7 +85,7 @@ export const deleteUpload = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const deleted = await Upload.findByIdAndDelete(id);
+    const deleted = await Upload.findOneAndDelete({ _id: id, user: req.user.id });
 
     if (!deleted) {
       return res.status(404).json({ message: "Upload not found" });
@@ -92,7 +100,7 @@ export const deleteUpload = async (req, res) => {
 
 export const getUploadHistory = async (req, res) => {
   try {
-    const uploads = await Upload.find({ user: req.user._id }).sort({ createdAt: -1 });
+    const uploads = await Upload.find({ user: req.user.id }).sort({ createdAt: -1 });
     res.json(uploads);
   } catch (err) {
     console.error("❌ Failed to get upload history:", err.message);

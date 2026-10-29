@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useContext, useEffect, useState } from "react";
 import { Pie } from "react-chartjs-2";
 import { Chart as ChartJS, ArcElement, Tooltip, Legend } from "chart.js";
 import { FaUser, FaTrash, FaBars, FaHome, FaCog, FaSignOutAlt } from "react-icons/fa";
@@ -6,10 +6,12 @@ import { toast } from "react-toastify";
 import { ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import API from "../../api";
+import { AuthContext } from "../../context/AuthContext";
 
 ChartJS.register(ArcElement, Tooltip, Legend);
 
 const AdminPanel = () => {
+  const { logout } = useContext(AuthContext);
   const [users, setUsers] = useState([]);
   const [refreshing, setRefreshing] = useState(false);
   const [active, setActive] = useState("dashboard"); // 'dashboard' | 'settings'
@@ -38,20 +40,8 @@ const AdminPanel = () => {
 
   const fetchUsers = async () => {
     try {
-      const token = sessionStorage.getItem("token");
-      const res = await fetch("https://excel-analytics-m5zg.onrender.com/api/admin/users", {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-      });
-
-      if (!res) {
-        throw new Error(`HTTP error! Status: ${res.status}`);
-      }
-
-      const data = await res.json();
-      setUsers(data);
+      const res = await API.get("/admin/users");
+      setUsers(res.data || []);
     } catch (error) {
       console.error("Error fetching users:", error);
     }
@@ -59,18 +49,7 @@ const AdminPanel = () => {
 
   const handleDelete = async (id) => {
     try {
-      const token = sessionStorage.getItem("token");
-      const res = await fetch(`https://excel-analytics-m5zg.onrender.com/api/admin/users/${id}`, {
-        method: "DELETE",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-      });
-
-      if (!res.ok) {
-        throw new Error(`Failed! Status: ${res.status}`);
-      }
+      await API.delete(`/admin/users/${id}`);
       setUsers(users.filter((u) => u._id !== id));
       toast.success("User deleted Successfully");
     } catch (err) {
@@ -105,7 +84,7 @@ const AdminPanel = () => {
   };
 
   return (
-    <div className="flex h-screen bg-gray-50">
+    <div className="flex min-h-screen bg-[#f5f7fa] text-slate-900">
       {/* Mobile overlay */}
       <div
         onClick={() => setSidebarOpen(false)}
@@ -114,25 +93,25 @@ const AdminPanel = () => {
 
       {/* Sidebar */}
       <aside
-        className={`fixed top-0 left-0 w-64 h-screen bg-linear-65 from-green-700 to-cyan-800 text-white flex flex-col z-50
+        className={`fixed top-0 left-0 z-50 flex h-screen w-64 flex-col border-r border-white/[0.06] bg-[#0b1220] text-white shadow-2xl
         transform transition-transform duration-300 ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}
         lg:static lg:translate-x-0`}
       >
-        <div className="p-6 font-bold text-2xl text-center">
+          <div className="border-b border-white/[0.07] p-6 text-center text-xl font-semibold tracking-tight">
           Excel Analytics
         </div>
         <nav className="flex-1">
           <ul className="space-y-2">
             <li
               onClick={() => { setActive("dashboard"); setSidebarOpen(false); }}
-              className={`px-3 py-1 bg-white text-black rounded-4xl m-4 text-center cursor-pointer hover:bg-green-200 ${active === "dashboard" ? "ring-2 ring-green-400" : ""} flex items-center justify-center gap-2`}
+              className={`mx-3 my-2 flex cursor-pointer items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-sm font-medium transition ${active === "dashboard" ? "bg-emerald-500/10 text-emerald-300 ring-1 ring-inset ring-emerald-400/15" : "text-slate-400 hover:bg-white/[0.05] hover:text-white"}`}
             >
               <FaHome />
               <span>Dashboard</span>
             </li>
             <li
               onClick={() => { setActive("settings"); setSidebarOpen(false); }}
-              className={`px-3 py-1 bg-white text-black rounded-4xl m-4 text-center cursor-pointer hover:bg-green-200 ${active === "settings" ? "ring-2 ring-green-400" : ""} flex items-center justify-center gap-2`}
+              className={`mx-3 my-2 flex cursor-pointer items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-sm font-medium transition ${active === "settings" ? "bg-emerald-500/10 text-emerald-300 ring-1 ring-inset ring-emerald-400/15" : "text-slate-400 hover:bg-white/[0.05] hover:text-white"}`}
             >
               <FaCog />
               <span>Account Settings</span>
@@ -144,11 +123,7 @@ const AdminPanel = () => {
             Admin Access
           </button> */}
           <button
-            onClick={() => {
-              localStorage.removeItem("role");
-              localStorage.removeItem("token");
-              window.location.href = "/login";
-            }}
+            onClick={logout}
             className= "w-full  text-center bg-green-50 text-black rounded-4xl py-2 mb-5 mt-5 cursor-pointer hover:text-red-500 flex items-center justify-center gap-2"
           >
             <FaSignOutAlt />
@@ -158,7 +133,7 @@ const AdminPanel = () => {
       </aside>
 
       {/* Main Content */}
-      <div className="flex-1 p-6 overflow-y-auto">
+        <main className="min-w-0 flex-1 overflow-y-auto p-4 sm:p-6 lg:p-9">
         {/* Mobile top bar */}
         <div className="lg:hidden flex items-center gap-3 mb-4">
           <button
@@ -173,28 +148,28 @@ const AdminPanel = () => {
         {active === "dashboard" ? (
           <>
             {/* Top Header */}
-            <div className="flex justify-between items-center mb-6 bg-green-100 p-4 rounded-lg shadow">
+            <div className="mb-6 flex flex-col justify-between gap-4 rounded-2xl bg-slate-950 p-5 text-white shadow-lg shadow-slate-900/10 sm:flex-row sm:items-center sm:p-6">
               <h1 className="text-xl font-semibold">Welcome back, Admin! 👋</h1>
               <button
                 onClick={refresh}
-                className="px-4 py-2 bg-green-700 text-white rounded-lg shadow hover:bg-green-600 cursor-pointer"
+                className="rounded-xl bg-emerald-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-400"
               >
                 {refreshing ? "Refreshing..." : "Refresh"}
               </button>
             </div>
 
             {/* User Info + Chart */}
-            <div className="grid grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               {/* User Info */}
-              <div className="col-span-2 bg-green-100 rounded-xl p-4 shadow">
-                <h2 className="font-semibold mb-4">USER INFO</h2>
+              <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-900/[0.02] lg:col-span-2 sm:p-5">
+                <h2 className="mb-4 font-semibold text-slate-950">Users</h2>
                 <div className="space-y-3">
                   {users
                     .filter((user) => user.email !== "chandankkumar156@gmail.com")
                     .map((user) => (
                       <div
                         key={user._id}
-                        className="flex items-center justify-between bg-white rounded-lg p-3 shadow-sm"
+                        className="flex items-center justify-between gap-3 rounded-xl border border-slate-100 bg-white p-3 transition hover:bg-slate-50"
                       >
                         <div className="flex items-center space-x-3 min-w-0">
                           <FaUser className="text-green-700 flex-shrink-0" />
@@ -218,7 +193,7 @@ const AdminPanel = () => {
               </div>
 
               {/* Pie Chart */}
-              <div className="bg-white rounded-xl shadow p-4">
+              <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                 <h2 className="font-semibold mb-4 text-center">
                   User Uploads Pie Chart
                 </h2>
@@ -246,8 +221,8 @@ const AdminPanel = () => {
           </>
         ) : (
           // Account Settings view (keeps same Admin sidebar)
-          <div className="max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="md:col-span-2 bg-white rounded-xl shadow p-6">
+          <div className="mx-auto grid max-w-5xl grid-cols-1 gap-5 md:grid-cols-3">
+            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm md:col-span-2 sm:p-6">
               <h2 className="text-2xl font-bold text-green-700 mb-4">Account Settings</h2>
               <div className="flex items-center gap-4 mb-6">
                 <div className="w-14 h-14 rounded-full bg-green-100 flex items-center justify-center text-green-700 text-2xl">👤</div>
@@ -325,7 +300,7 @@ const AdminPanel = () => {
               </div>
             </div>
 
-            <div className="bg-white rounded-xl shadow p-6">
+            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
               <h3 className="font-semibold text-gray-800 mb-3">Security Tips</h3>
               <ul className="list-disc text-sm text-gray-600 pl-5 space-y-2">
                 <li>Use a strong, unique password with a mix of letters, numbers, and symbols.</li>
@@ -341,7 +316,7 @@ const AdminPanel = () => {
             </div>
           </div>
         )}
-      </div>
+      </main>
       {/* ✅ Toast Container inside AdminPanel */}
       <ToastContainer position="top-right" autoClose={3000} />
     </div>

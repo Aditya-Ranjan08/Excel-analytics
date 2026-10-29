@@ -1,5 +1,6 @@
 import User from "../models/User.js";
 import Upload from "../models/Upload.js";
+import jwt from "jsonwebtoken";
 
 // GET /api/user/me
 export const getProfile = async (req, res) => {
@@ -34,7 +35,9 @@ export const updateProfile = async (req, res) => {
     }
 
     await user.save();
-    res.json({ message: "Profile updated", user: { id: user._id, name: user.name, email: user.email, role: user.role } });
+    const updatedUser = { id: user._id, name: user.name, email: user.email, role: user.role };
+    const token = jwt.sign(updatedUser, process.env.JWT_SECRET, { expiresIn: "1h" });
+    res.json({ message: "Profile updated", user: updatedUser, token });
   } catch (err) {
     console.error("updateProfile error:", err);
     res.status(500).json({ message: "Server error" });

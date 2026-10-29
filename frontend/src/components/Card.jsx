@@ -1,7 +1,7 @@
 
 export const Card = ({ children, className }) => {
   return (
-    <div className={`flex h-screen w-screen items-center justify-center  bg-linear-65 from-purple-500 to-green-500 fixed ${className}`}>
+    <div className={`flex min-h-screen w-full items-center justify-center overflow-y-auto bg-linear-65 from-purple-500 to-green-500 ${className}`}>
       {children}
     </div>
   );
